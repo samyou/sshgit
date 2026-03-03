@@ -31,6 +31,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@samyou/sshgit": "^0.1.1",
     "commander": "^14.0.3"
   }
 }
