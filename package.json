@@ -1,6 +1,6 @@
 {
   "name": "@samyou/sshgit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CLI to manage multiple GitHub/GitLab SSH accounts on one machine.",
   "type": "module",
   "license": "MIT",
