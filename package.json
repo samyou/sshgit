@@ -1,8 +1,17 @@
 {
   "name": "sshgit",
+  "version": "0.1.0",
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "bin": {
+    "sshgit": "./dist/sshgit"
+  },
+  "scripts": {
+    "dev": "bun run index.ts",
+    "typecheck": "bunx tsc --noEmit",
+    "build": "bun build ./index.ts --compile --outfile ./dist/sshgit"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
