@@ -11,7 +11,7 @@ export function parseProvider(input: string): Provider {
   if (normalized === "github" || normalized === "gitlab") {
     return normalized;
   }
-  throw new Error("--provider must be 'github' or 'gitlab'");
+  throw new Error(`Invalid --provider '${input}'. Use 'github' or 'gitlab'.`);
 }
 
 export function sanitizeToken(value: string): string {
@@ -21,7 +21,7 @@ export function sanitizeToken(value: string): string {
 export function requireToken(value: string, flag: string): string {
   const sanitized = sanitizeToken(value);
   if (!sanitized) {
-    throw new Error(`Invalid ${flag}; use letters, numbers, dash, underscore`);
+    throw new Error(`Invalid ${flag} '${value}'. Use only letters, numbers, '-' or '_'.`);
   }
   return sanitized;
 }

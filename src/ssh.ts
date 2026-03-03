@@ -20,7 +20,7 @@ export function ensureKeyPair(keyPath: string, email: string): void {
     const result = runCommand("ssh-keygen", args);
     if (!result.success) {
       const output = (result.stderr || result.stdout || "").trim();
-      throw new Error(`ssh-keygen failed: ${output}`);
+      throw new Error(`Failed to generate SSH key with ssh-keygen: ${output || "unknown error"}`);
     }
   }
 

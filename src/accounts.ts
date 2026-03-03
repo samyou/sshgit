@@ -12,9 +12,19 @@ export async function loadAccounts(): Promise<AccountRecord[]> {
     return [];
   }
 
-  const parsed = JSON.parse(raw) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    throw new Error(
+      `Invalid JSON in '${ACCOUNTS_PATH}'. Fix the file or run 'sshgit init' to recreate base files.`,
+    );
+  }
+
   if (!Array.isArray(parsed)) {
-    throw new Error("Invalid accounts.json format");
+    throw new Error(
+      `Invalid accounts file format at '${ACCOUNTS_PATH}'. Expected a JSON array. Try 'sshgit init' to recreate base files.`,
+    );
   }
 
   return parsed as AccountRecord[];

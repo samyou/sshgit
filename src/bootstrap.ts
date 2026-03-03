@@ -37,7 +37,7 @@ export function checkDependencies(): void {
   for (const binary of REQUIRED_BINARIES) {
     const result = runCommand("which", [binary]);
     if (!result.success) {
-      throw new Error(`Missing dependency: ${binary}`);
+      throw new Error(`Missing required dependency '${binary}'. Install it and run the command again.`);
     }
   }
 }

@@ -10,7 +10,14 @@ import {
 } from "./constants";
 import { ensureBaseLayout, ensureIncludeInSshConfig, checkDependencies } from "./bootstrap";
 import { fileExists } from "./files";
-import { ensureInsideGitRepo, getRemoteUrl, rewriteRemoteToAlias, setLocalConfig, setRemoteUrl } from "./git";
+import {
+  ensureInsideGitRepo,
+  getRemoteUrl,
+  listRemotes,
+  rewriteRemoteToAlias,
+  setLocalConfig,
+  setRemoteUrl,
+} from "./git";
 import {
   addKeyToAgent,
   deleteKeyPair,
@@ -20,6 +27,7 @@ import {
   testSshAlias,
   upsertManagedAliasBlock,
 } from "./ssh";
+import { copyTextToClipboard } from "./shell";
 import type { AccountRecord } from "./types";
 import { expandHome, nowIso, parseProvider, requireToken } from "./utils";
 
@@ -56,7 +64,11 @@ export function runCli(): void {
   registerAccountCommands(program);
   registerRepoCommands(program);
 
-  program.parse();
+  void program.parseAsync().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Error: ${message}`);
+    process.exitCode = 1;
+  });
 }
 
 function registerInitCommand(program: Command): void {
@@ -107,6 +119,15 @@ function registerAccountCommands(program: Command): void {
     });
 
   account
+    .command("copy-pub")
+    .description("Copy account public key to clipboard")
+    .argument("[alias]", "Alias to copy (optional if only one account exists)")
+    .action(async (alias?: string) => {
+      await initializeRuntime({ checkDeps: false, ensureInclude: false });
+      await handleCopyPublicKey(alias);
+    });
+
+  account
     .command("remove")
     .description("Remove an account and SSH alias")
     .requiredOption("--alias <alias>", "Alias to remove")
@@ -152,6 +173,7 @@ async function handleAddAccount(options: AddAccountOptions): Promise<void> {
   const keyPath = options.keyPath
     ? expandHome(options.keyPath)
     : join(SSH_DIR, `id_ed25519_${provider}_${account}`);
+  const publicKeyPath = `${keyPath}.pub`;
 
   ensureKeyPair(keyPath, options.email);
 
@@ -180,8 +202,12 @@ async function handleAddAccount(options: AddAccountOptions): Promise<void> {
 
   console.log(`Configured ${provider} account '${account}' as alias '${alias}'`);
   console.log(`- Private key: ${keyPath}`);
-  console.log(`- Public key: ${keyPath}.pub`);
+  console.log(`- Public key: ${publicKeyPath}`);
   console.log(`- Add this key in ${provider}: ${PROVIDER_KEY_URL[provider]}`);
+  if (provider === "github") {
+    console.log("- Before running 'sshgit account test', copy your public key to GitHub (Settings -> SSH and GPG keys).");
+    console.log(`  Copy command (macOS): pbcopy < "${publicKeyPath}"`);
+  }
 
   const publicKey = await readPublicKey(keyPath);
   if (publicKey) {
@@ -215,14 +241,14 @@ async function handleListAccounts(): Promise<void> {
 async function handleTestAccounts(alias?: string): Promise<void> {
   const accounts = await loadAccounts();
   if (accounts.length === 0) {
-    console.log("No accounts configured.");
+    console.log("No accounts configured yet. Add one with: sshgit account add --provider github --account <name> --email <email>");
     return;
   }
 
   const targetAlias = alias ? requireToken(alias, "alias") : undefined;
   const targets = targetAlias ? accounts.filter((account) => account.alias === targetAlias) : accounts;
   if (targets.length === 0) {
-    throw new Error(`No account found for alias '${targetAlias}'`);
+    throw new Error(buildAliasNotFoundMessage(targetAlias ?? alias ?? "", accounts));
   }
 
   for (const account of targets) {
@@ -244,7 +270,7 @@ async function handleRemoveAccount(options: RemoveAccountOptions): Promise<void>
   const accounts = await loadAccounts();
   const target = findAccountByAlias(accounts, alias);
   if (!target) {
-    throw new Error(`No account found for alias '${alias}'`);
+    throw new Error(buildAliasNotFoundMessage(alias, accounts));
   }
 
   await saveAccounts(removeAccountByAlias(accounts, alias));
@@ -260,6 +286,48 @@ async function handleRemoveAccount(options: RemoveAccountOptions): Promise<void>
   }
 }
 
+async function handleCopyPublicKey(aliasInput?: string): Promise<void> {
+  const accounts = await loadAccounts();
+  if (accounts.length === 0) {
+    console.log("No accounts configured yet. Add one with: sshgit account add --provider github --account <name> --email <email>");
+    return;
+  }
+
+  let account: AccountRecord;
+
+  if (aliasInput) {
+    const alias = requireToken(aliasInput, "alias");
+    const target = findAccountByAlias(accounts, alias);
+    if (!target) {
+      throw new Error(buildAliasNotFoundMessage(alias, accounts));
+    }
+    account = target;
+  } else if (accounts.length === 1) {
+    account = accounts[0]!;
+  } else {
+    const aliases = [...accounts].map((item) => item.alias).sort((left, right) => left.localeCompare(right));
+    throw new Error(
+      `Multiple accounts are configured. Choose one alias: ${aliases.join(", ")}. Example: sshgit account copy-pub ${aliases[0]}`,
+    );
+  }
+
+  const publicKeyPath = `${account.keyPath}.pub`;
+  const publicKey = await readPublicKey(account.keyPath);
+  if (!publicKey) {
+    throw new Error(
+      `Public key not found at '${publicKeyPath}'. Re-run 'sshgit account add --provider ${account.provider} --account ${account.account} --email ${account.email}' to recreate it.`,
+    );
+  }
+
+  const copied = copyTextToClipboard(`${publicKey.trim()}\n`);
+  if (!copied) {
+    throw new Error(`Failed to copy key to clipboard. Copy it manually with: pbcopy < "${publicKeyPath}"`);
+  }
+
+  console.log(`Copied public key for '${account.alias}' to clipboard`);
+  console.log(`Next, paste it into: ${PROVIDER_KEY_URL[account.provider]}`);
+}
+
 async function handleRepoUse(aliasInput: string, options: RepoUseOptions): Promise<void> {
   const alias = requireToken(aliasInput, "alias");
   const remote = options.remote;
@@ -269,12 +337,26 @@ async function handleRepoUse(aliasInput: string, options: RepoUseOptions): Promi
   const accounts = await loadAccounts();
   const account = findAccountByAlias(accounts, alias);
   if (!account) {
-    throw new Error(`No account found for alias '${alias}'`);
+    throw new Error(buildAliasNotFoundMessage(alias, accounts));
+  }
+
+  const remotes = listRemotes();
+  if (!remotes.includes(remote)) {
+    if (remotes.length === 0) {
+      throw new Error(
+        "No git remotes are configured for this repository yet. Add one first with `git remote add <name> <url>`, then run this command again.",
+      );
+    }
+
+    const exampleRemote = remotes[0];
+    throw new Error(
+      `Remote '${remote}' was not found. Available remotes: ${remotes.join(", ")}. Re-run with --remote <name> (for example: --remote ${exampleRemote}).`,
+    );
   }
 
   const currentRemote = getRemoteUrl(remote);
   if (!currentRemote) {
-    throw new Error(`Remote '${remote}' not found`);
+    throw new Error(`Remote '${remote}' exists but has no URL configured. Set one with: git remote set-url ${remote} <url>`);
   }
 
   const rewritten = rewriteRemoteToAlias(currentRemote, alias);
@@ -300,4 +382,13 @@ async function handleRepoUse(aliasInput: string, options: RepoUseOptions): Promi
   if (account.signingKey) {
     console.log(`Set local user.signingkey to '${account.signingKey}'`);
   }
+}
+
+function buildAliasNotFoundMessage(alias: string, accounts: AccountRecord[]): string {
+  if (accounts.length === 0) {
+    return "No accounts configured yet. Add one with: sshgit account add --provider github --account <name> --email <email>";
+  }
+
+  const aliases = [...accounts].map((account) => account.alias).sort((left, right) => left.localeCompare(right));
+  return `Alias '${alias}' was not found. Available aliases: ${aliases.join(", ")}. Run 'sshgit account list' to see configured accounts.`;
 }

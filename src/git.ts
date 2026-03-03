@@ -1,14 +1,26 @@
 import { runCommand } from "./shell";
 
 export function ensureInsideGitRepo(): void {
-  const output = runGit(["rev-parse", "--is-inside-work-tree"], true).trim();
-  if (output !== "true") {
-    throw new Error("Current directory is not a git repository");
+  const result = runCommand("git", ["rev-parse", "--is-inside-work-tree"]);
+  if (!result.success || result.stdout.trim() !== "true") {
+    throw new Error("This command must be run inside a git repository.");
   }
 }
 
 export function getRemoteUrl(remote: string): string {
   return runGit(["remote", "get-url", remote], true).trim();
+}
+
+export function listRemotes(): string[] {
+  const output = runGit(["remote"], true).trim();
+  if (!output) {
+    return [];
+  }
+
+  return output
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
 }
 
 export function setRemoteUrl(remote: string, url: string): void {
@@ -31,7 +43,9 @@ export function rewriteRemoteToAlias(remoteUrl: string, alias: string): string {
     return `git@${alias}:${path}`;
   }
 
-  throw new Error(`Unsupported remote URL format: ${remoteUrl}`);
+  throw new Error(
+    `Unsupported remote URL format: '${remoteUrl}'. Use an SSH, HTTPS, or HTTP git remote URL.`,
+  );
 }
 
 function runGit(args: string[], captureStdout = false): string {

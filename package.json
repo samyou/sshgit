@@ -1,16 +1,28 @@
 {
-  "name": "sshgit",
+  "name": "@samyou/sshgit",
   "version": "0.1.0",
-  "module": "index.ts",
+  "description": "CLI to manage multiple GitHub/GitLab SSH accounts on one machine.",
   "type": "module",
-  "private": true,
+  "license": "MIT",
   "bin": {
-    "sshgit": "./dist/sshgit"
+    "sshgit": "./dist/sshgit.js"
+  },
+  "files": [
+    "dist/sshgit.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "dev": "bun run index.ts",
     "typecheck": "bunx tsc --noEmit",
-    "build": "bun build ./index.ts --compile --outfile ./dist/sshgit"
+    "build": "rm -rf ./dist && bun build ./index.ts --target node --outfile ./dist/sshgit.js",
+    "prepublishOnly": "bun run typecheck && bun run build"
   },
   "devDependencies": {
     "@types/bun": "latest"

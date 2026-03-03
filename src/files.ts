@@ -1,4 +1,5 @@
 import { chmodSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 
 export function fileExists(path: string): boolean {
   return existsSync(path);
@@ -11,24 +12,24 @@ export function ensureDir(path: string, mode: number): void {
 
 export async function ensureFile(path: string, initialContent: string, mode: number): Promise<void> {
   if (!existsSync(path)) {
-    await Bun.write(path, initialContent);
+    await writeFile(path, initialContent, "utf8");
   }
   setMode(path, mode);
 }
 
 export async function readText(path: string): Promise<string> {
-  return Bun.file(path).text();
+  return readFile(path, "utf8");
 }
 
 export async function readTextIfExists(path: string): Promise<string | null> {
   if (!existsSync(path)) {
     return null;
   }
-  return Bun.file(path).text();
+  return readFile(path, "utf8");
 }
 
 export async function writeText(path: string, content: string, mode?: number): Promise<void> {
-  await Bun.write(path, content);
+  await writeFile(path, content, "utf8");
   if (mode !== undefined) {
     setMode(path, mode);
   }
